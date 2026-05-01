@@ -9,4 +9,4 @@ async def test_robot_status_integration():
         assert "position" in status
         assert "battery" in status
     finally:
-        await client.close()   # clean up the HTTP client
+        await client.close()
