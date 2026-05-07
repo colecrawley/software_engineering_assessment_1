@@ -12,25 +12,29 @@ from .audit_logger import AuditLogger
 from .database import get_db, engine
 from pydantic import BaseModel
 
-# fastapi
 app = FastAPI(title="Robot Management System", version="1.0.0")
 
-# cors
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:80",
+        "http://frontend:80",
+        "http://frontend:3000",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 Base.metadata.create_all(bind=engine)
 
-# init components
 robot_client = RobotClient()
 audit_logger = AuditLogger()
 
-# pydantic model
+
+# pydantic
 class UserCreate(BaseModel):
     username: str
     email: str
@@ -48,6 +52,7 @@ class Token(BaseModel):
 class MoveCommand(BaseModel):
     x: int
     y: int
+
 
 # auth endpoint
 @app.post("/api/register", response_model=Token)
@@ -84,16 +89,15 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value
     }
 
-# robot control endpoint
+
+# robot control
 @app.get("/api/robot/status")
 async def get_robot_status(current_user: User = Depends(get_current_user)):
     try:
-        status = await robot_client.get_status()
+        robot_status = await robot_client.get_status()
         connection_status = robot_client.get_connection_status()
-        if status:
-            pass
         return {
-            **(status or {}),
+            **(robot_status or {}),
             "connection_status": connection_status
         }
     except Exception as e:
@@ -108,24 +112,16 @@ async def move_robot(
     try:
         response = await robot_client.move_robot(command.x, command.y)
         audit_logger.log_command(
-            db,
-            current_user.username,
-            "MOVE",
-            f"x={command.x}, y={command.y}",
-            str(response),
-            success=True
+            db, current_user.username, "MOVE",
+            f"x={command.x}, y={command.y}", str(response), success=True
         )
         return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         audit_logger.log_command(
-            db,
-            current_user.username,
-            "MOVE",
-            f"x={command.x}, y={command.y}",
-            str(e),
-            success=False
+            db, current_user.username, "MOVE",
+            f"x={command.x}, y={command.y}", str(e), success=False
         )
         raise HTTPException(status_code=503, detail=f"Failed to move robot: {str(e)}")
 
@@ -137,25 +133,15 @@ async def reset_robot(
     try:
         success = await robot_client.reset_robot()
         audit_logger.log_command(
-            db,
-            current_user.username,
-            "RESET",
-            "Reset simulation",
-            "Success" if success else "Failed",
-            success=success
+            db, current_user.username, "RESET",
+            "Reset simulation", "Success" if success else "Failed", success=success
         )
         if success:
             return {"message": "Robot reset successfully"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to reset robot")
+        raise HTTPException(status_code=500, detail="Failed to reset robot")
     except Exception as e:
         audit_logger.log_command(
-            db,
-            current_user.username,
-            "RESET",
-            "Reset simulation",
-            str(e),
-            success=False
+            db, current_user.username, "RESET", "Reset simulation", str(e), success=False
         )
         raise HTTPException(status_code=503, detail=f"Reset failed: {str(e)}")
 
@@ -173,6 +159,8 @@ async def get_robot_sensors(current_user: User = Depends(get_current_user)):
         return sensor_data
     raise HTTPException(status_code=503, detail="Failed to retrieve sensor data")
 
+
+# audit endpoint
 @app.get("/api/audit/commands")
 async def get_command_history(
     limit: int = 100,
@@ -209,16 +197,40 @@ async def get_telemetry_history(
         for tele in history
     ]
 
+
+# websocket
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
+    """
+    Streams live telemetry to the browser client and persists each reading
+    to the TelemetryLog table for the audit trail.
+    """
     await websocket.accept()
+    # obtain db session
+    db = next(get_db())
     try:
         async for telemetry_data in robot_client.listen_telemetry():
+            # persist telemtry
+            try:
+                audit_logger.log_telemetry(
+                    db,
+                    position=telemetry_data.get("position", {}),
+                    battery=telemetry_data.get("battery", 0),
+                    status=telemetry_data.get("status", "unknown")
+                )
+            except Exception as db_err:
+                pass
+
+            # payload with backend connection
+            telemetry_data["connection_status"] = robot_client.get_connection_status()
             await websocket.send_json(telemetry_data)
     except WebSocketDisconnect:
         pass
     except Exception as e:
         print(f"WebSocket error: {e}")
+    finally:
+        db.close()
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

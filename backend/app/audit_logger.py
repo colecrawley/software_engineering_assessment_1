@@ -13,7 +13,7 @@ class AuditLogger:
     
     def log_command(self, db: Session, username: str, command_type: str, 
                     command_data: str, robot_response: str = None, success: bool = True):
-        # log command sent to robot
+        # log cmd sent to robot
         log_entry = CommandLog(
             timestamp=datetime.utcnow(),
             username=username,
