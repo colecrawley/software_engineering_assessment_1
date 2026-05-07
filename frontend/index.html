@@ -147,10 +147,10 @@
         banner.className = '';
         if (status === 'reconnecting') {
             banner.className = 'reconnecting';
-            banner.textContent = '⚠ Reconnecting to robot... please wait';
+            banner.textContent = 'Reconnecting to robot... please wait';
         } else if (status === 'error' || status === 'disconnected' || status === 'service_unavailable') {
             banner.className = 'signal_lost';
-            banner.textContent = '✖ Signal Lost — robot connection unavailable';
+            banner.textContent = 'Signal Lost robot connection unavailable';
         } else {
             banner.className = 'connected';
             banner.textContent = '';
@@ -210,9 +210,9 @@
 
         const msgDiv = document.getElementById('robotStatusMsg');
         if (connStatus === 'reconnecting') {
-            msgDiv.innerHTML = '<span class="moving">⟳ Reconnecting to robot...</span>';
+            msgDiv.innerHTML = '<span class="moving">Reconnecting to robot...</span>';
         } else if (connStatus === 'error' || connStatus === 'disconnected') {
-            msgDiv.innerHTML = '<span class="stuck">✖ Signal Lost. Retrying...</span>';
+            msgDiv.innerHTML = '<span class="stuck">Signal Lost. Retrying...</span>';
         } else if (robotData.status === 'MOVING') {
             msgDiv.innerHTML = '<span class="moving">Robot is moving...</span>';
         } else if (robotData.status === 'STUCK') {
@@ -225,7 +225,7 @@
 
         const alertDiv = document.getElementById('batteryAlert');
         if (battery < 20) {
-            alertDiv.innerHTML = '<div class="battery-warning">⚠ LOW BATTERY! Return to (0,0) to recharge.</div>';
+            alertDiv.innerHTML = '<div class="battery-warning">LOW BATTERY! Return to (0,0) to recharge.</div>';
         } else {
             alertDiv.innerHTML = '';
         }
@@ -291,7 +291,7 @@
         }
         try {
             await apiCall('/robot/move', { method: 'POST', body: JSON.stringify({ x, y }) });
-            document.getElementById('moveFeedback').innerHTML = '<span style="color:green">✓ Command sent!</span>';
+            document.getElementById('moveFeedback').innerHTML = '<span style="color:green">Command sent!</span>';
             setTimeout(() => document.getElementById('moveFeedback').innerHTML = '', 2000);
         } catch (err) { alert('Move failed: ' + err.message); }
     }
@@ -309,7 +309,7 @@
                 row.insertCell(2).innerText = log.command_type;
                 row.insertCell(3).innerText = log.command_data;
                 const successCell = row.insertCell(4);
-                successCell.innerText = log.success ? '✓' : '✗';
+                successCell.innerText = log.success ? 'yes' : 'no';
                 successCell.style.color = log.success ? '#4caf50' : '#f44336';
             });
             document.getElementById('historyModal').style.display = 'block';
@@ -337,7 +337,7 @@
         if (!username || !password) { alert('Enter username and password'); return; }
         try {
             await apiCall('/register', { method: 'POST', body: JSON.stringify({ username, password, email: `${username}@rms.local`, role }) });
-            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registered successfully — please login.</span>';
+            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registered successfully please login.</span>';
         } catch (err) {
             document.getElementById('authMessage').innerHTML = `<span style="color:red">Registration failed: ${err.message}</span>`;
         }
@@ -375,7 +375,7 @@
             } else {
                 document.getElementById('moveBtn').disabled = true;
                 document.getElementById('resetBtn').disabled = true;
-                document.getElementById('roleWarning').innerHTML = 'Viewer role — read-only access.';
+                document.getElementById('roleWarning').innerHTML = 'Viewer role read-only access.';
             }
             await fetchMap();
             connectWebSocket();
