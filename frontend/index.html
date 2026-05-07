@@ -150,7 +150,7 @@
             banner.textContent = 'Reconnecting to robot... please wait';
         } else if (status === 'error' || status === 'disconnected' || status === 'service_unavailable') {
             banner.className = 'signal_lost';
-            banner.textContent = 'Signal Lost — robot connection unavailable';
+            banner.textContent = 'Signal Lost robot connection unavailable';
         } else {
             banner.className = 'connected';
             banner.textContent = '';
@@ -337,7 +337,7 @@
         if (!username || !password) { alert('Enter username and password'); return; }
         try {
             await apiCall('/register', { method: 'POST', body: JSON.stringify({ username, password, email: `${username}@rms.local`, role }) });
-            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registered successfully — please login.</span>';
+            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registered successfully please login.</span>';
         } catch (err) {
             document.getElementById('authMessage').innerHTML = `<span style="color:red">Registration failed: ${err.message}</span>`;
         }
@@ -375,7 +375,7 @@
             } else {
                 document.getElementById('moveBtn').disabled = true;
                 document.getElementById('resetBtn').disabled = true;
-                document.getElementById('roleWarning').innerHTML = 'Viewer role — read-only access.';
+                document.getElementById('roleWarning').innerHTML = 'Viewer role read-only access.';
             }
             await fetchMap();
             connectWebSocket();
