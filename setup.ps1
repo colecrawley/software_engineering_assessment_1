@@ -1,4 +1,3 @@
-# quick setup
 Set-Location -Path $PSScriptRoot
 
 Write-Host "Setting up Robot Management System..." -ForegroundColor Cyan
@@ -21,7 +20,7 @@ REDIS_URL=redis://redis:6379/0
 "@
 
 if (-not (Test-Path "backend")) {
-    Write-Host "backend folder not found. Are you running this script from the repository root?" -ForegroundColor Red
+    Write-Host "ERROR: backend folder not found. Run this script from repository root." -ForegroundColor Red
     exit 1
 }
 
@@ -29,11 +28,54 @@ $envPath = "backend\.env"
 $envContent | Out-File -FilePath $envPath -Encoding ascii -Force
 Write-Host "Created $envPath" -ForegroundColor Green
 
-# Stop any old containers and start fresh
-Write-Host "Stopping any old containers..." -ForegroundColor Cyan
+Write-Host "Stopping and removing old containers, networks, volumes..." -ForegroundColor Cyan
 docker-compose down -v
 
-Write-Host "Building and starting all services..." -ForegroundColor Cyan
-docker-compose up --build
+Write-Host "Building all images from scratch (no cache)..." -ForegroundColor Cyan
+docker-compose build --no-cache
 
-Write-Host "System is ready! Open http://localhost:3000 in your browser." -ForegroundColor Green
+Write-Host "Starting all services..." -ForegroundColor Cyan
+docker-compose up -d
+
+Write-Host "Waiting for backend to become healthy..." -ForegroundColor Cyan
+$maxAttempts = 30
+$attempt = 0
+$backendReady = $false
+while ($attempt -lt $maxAttempts -and -not $backendReady) {
+    Start-Sleep -Seconds 2
+    $attempt++
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8000/api/health" -UseBasicParsing -TimeoutSec 2
+        if ($response.StatusCode -eq 200) {
+            $backendReady = $true
+            Write-Host "Backend is ready." -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "   Waiting for backend... (attempt $attempt/$maxAttempts)" -ForegroundColor Yellow
+    }
+}
+
+if (-not $backendReady) {
+    Write-Host "ERROR: Backend did not become ready in time. Check logs: docker-compose logs backend" -ForegroundColor Red
+    exit 1
+}
+
+$backendContainer = docker ps -q --filter "label=com.docker.compose.service=backend"
+if (-not $backendContainer) {
+    $backendContainer = docker-compose ps -q backend
+}
+
+if ($backendContainer) {
+    Write-Host "Found backend container: $backendContainer" -ForegroundColor Cyan
+    Write-Host "Running backend tests..." -ForegroundColor Cyan
+    docker exec -w /app $backendContainer sh -c "PYTHONPATH=/app pytest tests/ -v"
+    Write-Host "Tests completed." -ForegroundColor Green
+} else {
+    Write-Host "WARNING: Could not find backend container. Tests skipped." -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "System is ready!" -ForegroundColor Green
+Write-Host "Frontend: http://localhost:3000" -ForegroundColor Cyan
+Write-Host "Backend API docs: http://localhost:8000/docs" -ForegroundColor Cyan
+Write-Host "Robot Simulator API: http://localhost:5000/docs" -ForegroundColor Cyan
