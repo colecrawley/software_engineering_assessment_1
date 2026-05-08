@@ -41,6 +41,9 @@ jobs:
     - name: Run backend tests
       env:
         DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/testdb
+        # PYTHONPATH tells pytest where to find the app package
+        # without this, imports like 'from app.robot_client import ...' fail
+        # with ModuleNotFoundError because backend/ is not on sys.path
         PYTHONPATH: .
       run: |
         cd backend

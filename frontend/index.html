@@ -13,12 +13,12 @@
         button.history { background: #9c27b0; color: white; }
         input, select { padding: 8px; margin: 5px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; }
         pre { background: #1e1e1e; padding: 10px; border-radius: 5px; overflow-x: auto; }
-        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 13px; }
-        .connected { background: #4caf50; color: white; }
-        .disconnected { background: #f44336; color: white; }
+        .status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+        .connected { background: #4caf50; }
+        .disconnected { background: #f44336; }
         .reconnecting { background: #ff9800; color: black; }
-        .error { background: #ff5722; color: white; }
-        .service_unavailable { background: #9e9e9e; color: white; }
+        .error { background: #ff9800; }
+        .service_unavailable { background: #9e9e9e; }
         .map-container { position: relative; width: 420px; height: 420px; margin: 0 auto; background: #000; border: 2px solid #444; }
         .map-row { display: flex; }
         .map-cell { width: 20px; height: 20px; border: 1px solid #333; box-sizing: border-box; }
@@ -31,24 +31,31 @@
         .idle { color: #4caf50; }
         .user-info { display: flex; justify-content: flex-end; align-items: center; gap: 15px; margin-bottom: 10px; }
         .username { font-weight: bold; color: #00bcd4; }
-        .battery-warning { background: #f44336; color: white; padding: 10px; border-radius: 5px; margin-top: 10px; text-align: center; font-weight: bold; }
+        .battery-warning { background: #f44336; color: white; padding: 10px; border-radius: 5px; margin-top: 10px; text-align: center; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
         .modal-content { background: #2d2d2d; margin: 10% auto; padding: 20px; width: 80%; max-width: 800px; border-radius: 8px; max-height: 70vh; overflow-y: auto; }
         .modal-content table { width: 100%; border-collapse: collapse; }
         .modal-content th, .modal-content td { border: 1px solid #555; padding: 8px; text-align: left; }
         .modal-content th { background: #444; }
         .close { color: white; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
-
-        #connectionBanner { display: none; width: 100%; text-align: center; padding: 10px; border-radius: 6px; font-weight: bold; margin-bottom: 12px; font-size: 15px; }
-        #connectionBanner.reconnecting { background: #ff9800; color: #000; display: block; }
-        #connectionBanner.signal_lost { background: #f44336; color: #fff; display: block; }
-        #connectionBanner.connected { display: none; }
+        /* status banner, hidden when connected */
+        #connectionBanner {
+            display: none;
+            width: 100%;
+            text-align: center;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        #connectionBanner.show-reconnecting { display: block; background: #ff9800; color: #000; }
+        #connectionBanner.show-lost { display: block; background: #f44336; color: #fff; }
     </style>
 </head>
 <body>
 <div class="container">
 
-    <!-- connect status -->
     <div id="connectionBanner"></div>
 
     <div class="card">
@@ -132,7 +139,7 @@
     let currentUser = null;
     let wsReconnectTimer = null;
 
-    // api helper
+    // helper for api call
     async function apiCall(endpoint, options = {}) {
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -141,23 +148,19 @@
         return res.json();
     }
 
-    // connect banner
-    function setConnectionBanner(status) {
+    function updateConnectionBanner(connStatus) {
         const banner = document.getElementById('connectionBanner');
         banner.className = '';
-        if (status === 'reconnecting') {
-            banner.className = 'reconnecting';
-            banner.textContent = 'Reconnecting to robot... please wait';
-        } else if (status === 'error' || status === 'disconnected' || status === 'service_unavailable') {
-            banner.className = 'signal_lost';
-            banner.textContent = 'Signal Lost robot connection unavailable';
-        } else {
-            banner.className = 'connected';
-            banner.textContent = '';
+        banner.textContent = '';
+        if (connStatus === 'reconnecting') {
+            banner.className = 'show-reconnecting';
+            banner.textContent = '⟳  Reconnecting to robot — please wait...';
+        } else if (connStatus === 'error' || connStatus === 'disconnected' || connStatus === 'service_unavailable') {
+            banner.className = 'show-lost';
+            banner.textContent = '✖  Signal Lost — robot connection unavailable';
         }
     }
 
-    // map fetch
     async function fetchMap() {
         if (!token) return;
         try {
@@ -169,20 +172,16 @@
     function drawMap() {
         const container = document.getElementById('mapContainer');
         if (!container || !mapData || !robotData) return;
-        const { width, height, grid } = mapData;
+        const width = mapData.width, height = mapData.height, grid = mapData.grid;
         container.innerHTML = '';
         for (let y = 0; y < height; y++) {
-            const row = document.createElement('div');
-            row.className = 'map-row';
+            const row = document.createElement('div'); row.className = 'map-row';
             for (let x = 0; x < width; x++) {
-                const cell = document.createElement('div');
-                cell.className = 'map-cell';
+                const cell = document.createElement('div'); cell.className = 'map-cell';
                 if (grid[y] && grid[y][x] === 1) cell.classList.add('obstacle');
-                if (robotData.position && robotData.position.x === x && robotData.position.y === y) {
-                    cell.classList.add('robot');
-                } else if (x === 0 && y === 0) {
-                    cell.style.backgroundColor = '#4caf50';
-                    cell.style.opacity = '0.5';
+                if (robotData.position && robotData.position.x === x && robotData.position.y === y) cell.classList.add('robot');
+                if (x === 0 && y === 0 && (!robotData.position || robotData.position.x !== 0 || robotData.position.y !== 0)) {
+                    cell.style.backgroundColor = '#4caf50'; cell.style.opacity = '0.5';
                 }
                 row.appendChild(cell);
             }
@@ -190,12 +189,17 @@
         }
     }
 
-    // ui
     function updateUI() {
         if (!robotData) return;
 
         const connStatus = robotData.connection_status || 'connected';
-        setConnectionBanner(connStatus);
+
+        updateConnectionBanner(connStatus);
+
+        // no controls when conection is not good
+        const canControl = currentUser && currentUser.role === 'commander' && connStatus === 'connected';
+        document.getElementById('moveBtn').disabled = !canControl;
+        document.getElementById('resetBtn').disabled = !canControl;
 
         const statusDiv = document.getElementById('statusDisplay');
         const battery = robotData.battery;
@@ -210,9 +214,9 @@
 
         const msgDiv = document.getElementById('robotStatusMsg');
         if (connStatus === 'reconnecting') {
-            msgDiv.innerHTML = '<span class="moving">Reconnecting to robot...</span>';
+            msgDiv.innerHTML = '<span class="moving">⟳ Reconnecting to robot...</span>';
         } else if (connStatus === 'error' || connStatus === 'disconnected') {
-            msgDiv.innerHTML = '<span class="stuck">Signal Lost. Retrying...</span>';
+            msgDiv.innerHTML = '<span class="stuck">✖ Signal Lost. Retrying...</span>';
         } else if (robotData.status === 'MOVING') {
             msgDiv.innerHTML = '<span class="moving">Robot is moving...</span>';
         } else if (robotData.status === 'STUCK') {
@@ -223,12 +227,10 @@
             msgDiv.innerHTML = '<span class="idle">Robot idle.</span>';
         }
 
+        // low batt
         const alertDiv = document.getElementById('batteryAlert');
-        if (battery < 20) {
-            alertDiv.innerHTML = '<div class="battery-warning">LOW BATTERY! Return to (0,0) to recharge.</div>';
-        } else {
-            alertDiv.innerHTML = '';
-        }
+        if (battery < 20) alertDiv.innerHTML = '<div class="battery-warning">LOW BATTERY! Return to (0,0) to recharge.</div>';
+        else alertDiv.innerHTML = '';
 
         drawMap();
     }
@@ -237,40 +239,32 @@
     function connectWebSocket() {
         if (webSocket && webSocket.readyState === WebSocket.OPEN) return;
         if (!token) return;
-
-        setConnectionBanner('reconnecting');
+        updateConnectionBanner('reconnecting');
         webSocket = new WebSocket(WS_URL);
-
         webSocket.onopen = () => {
             console.log('WebSocket connected');
-            setConnectionBanner('connected');
+            updateConnectionBanner('connected');
         };
-
         webSocket.onmessage = (event) => {
             const data = JSON.parse(event.data);
             robotData = data;
             updateUI();
         };
-
         webSocket.onerror = (err) => {
             console.error('WebSocket error', err);
-            setConnectionBanner('error');
+            updateConnectionBanner('error');
         };
-
         webSocket.onclose = () => {
             console.log('WebSocket disconnected, reconnecting in 2s');
-            setConnectionBanner('reconnecting');
+            updateConnectionBanner('reconnecting');
             if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
             wsReconnectTimer = setTimeout(connectWebSocket, 2000);
         };
     }
 
-    // robo cmd
+    // reset
     async function resetRobot() {
-        if (!token || (currentUser && currentUser.role !== 'commander')) {
-            alert('Commander role required');
-            return;
-        }
+        if (!token || (currentUser && currentUser.role !== 'commander')) { alert('Commander role required'); return; }
         try {
             await apiCall('/robot/reset', { method: 'POST' });
             alert('Reset successful');
@@ -278,25 +272,20 @@
         } catch (err) { alert('Reset failed: ' + err.message); }
     }
 
+    // move bot
     async function moveRobot() {
-        if (!token || (currentUser && currentUser.role !== 'commander')) {
-            alert('Commander role required');
-            return;
-        }
+        if (!token || (currentUser && currentUser.role !== 'commander')) { alert('Commander role required'); return; }
         const x = parseInt(document.getElementById('x').value);
         const y = parseInt(document.getElementById('y').value);
-        if (isNaN(x) || isNaN(y) || x < 0 || x > 20 || y < 0 || y > 20) {
-            alert('Coordinates must be 0-20');
-            return;
-        }
+        if (isNaN(x) || isNaN(y) || x<0 || x>20 || y<0 || y>20) { alert('Coordinates 0-20'); return; }
         try {
-            await apiCall('/robot/move', { method: 'POST', body: JSON.stringify({ x, y }) });
+            await apiCall('/robot/move', { method: 'POST', body: JSON.stringify({x,y}) });
             document.getElementById('moveFeedback').innerHTML = '<span style="color:green">Command sent!</span>';
             setTimeout(() => document.getElementById('moveFeedback').innerHTML = '', 2000);
         } catch (err) { alert('Move failed: ' + err.message); }
     }
 
-    // augit
+    // cmd history modal
     async function showHistory() {
         try {
             const logs = await apiCall('/audit/commands');
@@ -308,9 +297,7 @@
                 row.insertCell(1).innerText = log.username;
                 row.insertCell(2).innerText = log.command_type;
                 row.insertCell(3).innerText = log.command_data;
-                const successCell = row.insertCell(4);
-                successCell.innerText = log.success ? 'yes' : 'no';
-                successCell.style.color = log.success ? '#4caf50' : '#f44336';
+                row.insertCell(4).innerText = log.success ? 'yes' : 'no';
             });
             document.getElementById('historyModal').style.display = 'block';
         } catch (err) { alert('Failed to load history: ' + err.message); }
@@ -321,26 +308,22 @@
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         try {
-            const data = await apiCall('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+            const data = await apiCall('/login', { method: 'POST', body: JSON.stringify({username, password}) });
             token = data.access_token;
             localStorage.setItem('token', token);
             await startApp();
-        } catch (err) {
-            document.getElementById('authMessage').innerHTML = `<span style="color:red">Login failed: ${err.message}</span>`;
-        }
+        } catch (err) { document.getElementById('authMessage').innerHTML = `<span style="color:red">Login failed: ${err.message}</span>`; }
     }
 
     async function register() {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         const role = document.getElementById('regRole').value;
-        if (!username || !password) { alert('Enter username and password'); return; }
+        if (!username || !password) { alert('Enter username/password'); return; }
         try {
-            await apiCall('/register', { method: 'POST', body: JSON.stringify({ username, password, email: `${username}@rms.local`, role }) });
-            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registered successfully please login.</span>';
-        } catch (err) {
-            document.getElementById('authMessage').innerHTML = `<span style="color:red">Registration failed: ${err.message}</span>`;
-        }
+            await apiCall('/register', { method: 'POST', body: JSON.stringify({username, password, email: `${username}@test.com`, role}) });
+            document.getElementById('authMessage').innerHTML = '<span style="color:green">Registration successful! Now login.</span>';
+        } catch (err) { document.getElementById('authMessage').innerHTML = `<span style="color:red">Registration failed: ${err.message}</span>`; }
     }
 
     function logout() {
@@ -375,14 +358,14 @@
             } else {
                 document.getElementById('moveBtn').disabled = true;
                 document.getElementById('resetBtn').disabled = true;
-                document.getElementById('roleWarning').innerHTML = 'Viewer role read-only access.';
+                document.getElementById('roleWarning').innerHTML = 'Viewer role - cannot control robot.';
             }
             await fetchMap();
             connectWebSocket();
         } catch (err) { logout(); }
     }
 
-    // event listener
+    // event lsitener
     document.getElementById('refreshBtn').onclick = fetchMap;
     document.getElementById('resetBtn').onclick = resetRobot;
     document.getElementById('moveBtn').onclick = moveRobot;
@@ -393,14 +376,9 @@
     document.getElementsByClassName('close')[0].onclick = () => document.getElementById('historyModal').style.display = 'none';
     window.onclick = (e) => { if (e.target === document.getElementById('historyModal')) document.getElementById('historyModal').style.display = 'none'; };
 
-    // init load
-    if (token) {
-        startApp().catch(() => logout());
-    } else {
-        document.getElementById('authPanel').style.display = 'block';
-        document.getElementById('moveBtn').disabled = true;
-        document.getElementById('resetBtn').disabled = true;
-    }
+    // initial load
+    if (token) startApp().catch(() => logout());
+    else { document.getElementById('authPanel').style.display = 'block'; document.getElementById('moveBtn').disabled = true; document.getElementById('resetBtn').disabled = true; }
 </script>
 </body>
 </html>

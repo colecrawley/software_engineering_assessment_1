@@ -12,9 +12,10 @@ from .audit_logger import AuditLogger
 from .database import get_db, engine
 from pydantic import BaseModel
 
+# fastapi
 app = FastAPI(title="Robot Management System", version="1.0.0")
 
-# CORS
+# cors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -30,11 +31,11 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+# init components
 robot_client = RobotClient()
 audit_logger = AuditLogger()
 
-
-# pydantic
+# pydantic model
 class UserCreate(BaseModel):
     username: str
     email: str
@@ -52,7 +53,6 @@ class Token(BaseModel):
 class MoveCommand(BaseModel):
     x: int
     y: int
-
 
 # auth endpoint
 @app.post("/api/register", response_model=Token)
@@ -89,15 +89,16 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value
     }
 
-
-# robot control
+# robot control endpoint
 @app.get("/api/robot/status")
 async def get_robot_status(current_user: User = Depends(get_current_user)):
     try:
-        robot_status = await robot_client.get_status()
+        status = await robot_client.get_status()
         connection_status = robot_client.get_connection_status()
+        if status:
+            pass
         return {
-            **(robot_status or {}),
+            **(status or {}),
             "connection_status": connection_status
         }
     except Exception as e:
@@ -112,16 +113,24 @@ async def move_robot(
     try:
         response = await robot_client.move_robot(command.x, command.y)
         audit_logger.log_command(
-            db, current_user.username, "MOVE",
-            f"x={command.x}, y={command.y}", str(response), success=True
+            db,
+            current_user.username,
+            "MOVE",
+            f"x={command.x}, y={command.y}",
+            str(response),
+            success=True
         )
         return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         audit_logger.log_command(
-            db, current_user.username, "MOVE",
-            f"x={command.x}, y={command.y}", str(e), success=False
+            db,
+            current_user.username,
+            "MOVE",
+            f"x={command.x}, y={command.y}",
+            str(e),
+            success=False
         )
         raise HTTPException(status_code=503, detail=f"Failed to move robot: {str(e)}")
 
@@ -133,15 +142,25 @@ async def reset_robot(
     try:
         success = await robot_client.reset_robot()
         audit_logger.log_command(
-            db, current_user.username, "RESET",
-            "Reset simulation", "Success" if success else "Failed", success=success
+            db,
+            current_user.username,
+            "RESET",
+            "Reset simulation",
+            "Success" if success else "Failed",
+            success=success
         )
         if success:
             return {"message": "Robot reset successfully"}
-        raise HTTPException(status_code=500, detail="Failed to reset robot")
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reset robot")
     except Exception as e:
         audit_logger.log_command(
-            db, current_user.username, "RESET", "Reset simulation", str(e), success=False
+            db,
+            current_user.username,
+            "RESET",
+            "Reset simulation",
+            str(e),
+            success=False
         )
         raise HTTPException(status_code=503, detail=f"Reset failed: {str(e)}")
 
@@ -159,8 +178,6 @@ async def get_robot_sensors(current_user: User = Depends(get_current_user)):
         return sensor_data
     raise HTTPException(status_code=503, detail="Failed to retrieve sensor data")
 
-
-# audit endpoint
 @app.get("/api/audit/commands")
 async def get_command_history(
     limit: int = 100,
@@ -197,20 +214,12 @@ async def get_telemetry_history(
         for tele in history
     ]
 
-
-# websocket
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
-    """
-    Streams live telemetry to the browser client and persists each reading
-    to the TelemetryLog table for the audit trail.
-    """
     await websocket.accept()
-    # obtain db session
     db = next(get_db())
     try:
         async for telemetry_data in robot_client.listen_telemetry():
-            # persist telemtry
             try:
                 audit_logger.log_telemetry(
                     db,
@@ -218,10 +227,8 @@ async def websocket_telemetry(websocket: WebSocket):
                     battery=telemetry_data.get("battery", 0),
                     status=telemetry_data.get("status", "unknown")
                 )
-            except Exception as db_err:
+            except Exception:
                 pass
-
-            # payload with backend connection
             telemetry_data["connection_status"] = robot_client.get_connection_status()
             await websocket.send_json(telemetry_data)
     except WebSocketDisconnect:
@@ -230,7 +237,6 @@ async def websocket_telemetry(websocket: WebSocket):
         print(f"WebSocket error: {e}")
     finally:
         db.close()
-
 
 @app.on_event("shutdown")
 async def shutdown_event():
