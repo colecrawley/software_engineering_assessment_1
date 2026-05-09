@@ -1,4 +1,4 @@
-# Robot Management System — CMP9134
+# Robot Management System CMP9134
 
 A web-based Ground Control Station for monitoring and controlling a virtual autonomous robot.
 
